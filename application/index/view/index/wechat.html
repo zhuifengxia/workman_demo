@@ -1,0 +1,136 @@
+<html><head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>聊天室</title>
+    <script src="/static/home/js/jquery.min.js"></script>
+    <link href="/static/home/css/style.css" rel="stylesheet">
+    <link href="/static/home/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/home/css/jquery-sinaEmotion-2.1.0.min.css" rel="stylesheet">
+    <script>
+        var ws, name, client_list={};
+        // 连接服务端
+        function connect() {
+            // 创建websocket
+            ws = new WebSocket("ws://47.93.199.222:8282");
+            // 当socket连接打开时，输入用户名
+            ws.onopen = onopen;
+            // 当有消息时根据消息类型显示不同信息
+            ws.onmessage = onmessage;
+            ws.onclose = function() {
+                console.log("连接关闭，定时重连");
+                connect();
+            };
+            ws.onerror = function() {
+                console.log("出现错误");
+            };
+        }
+        // 连接建立时发送登录信息
+        function onopen()
+        {
+            if(!name)
+            {
+                show_prompt();
+            }
+            // 登录
+            var login_data = '{"type":"login","client_name":"'+name.replace(/"/g, '\\"')+'"}';
+            console.log("websocket握手成功，发送登录数据:"+login_data);
+            ws.send(login_data);
+        }
+        // 输入姓名
+        function show_prompt(){
+            name = prompt('输入你的名字：', '');
+            if(!name || name=='null'){
+                name = '游客';
+            }
+        }
+        // 服务端发来消息时
+        function onmessage(e)
+        {
+            // json数据转换成js对象
+            // var bindUrl = "http://workman.liuxiaomo.cn/push/BindClientId";
+            var data = JSON.parse(e.data);
+            console.log(data);
+            var type = data.type || '';
+            switch(type){
+                // Events.php中返回的init类型的消息，将client_id发给后台进行uid绑定
+                // case 'init':
+                //     // 利用jquery发起ajax请求，将client_id发给后端进行uid绑定
+                //     $.post(bindUrl, {client_id: data.client_id,nickname:name}, function(data){
+                //
+                //     }, 'json');
+                //     break;
+                case 'login': // 登录 更新用户列表
+                    say(data.client_id, data.client_name,  data.client_name+' 加入了聊天室', data.time);
+                    if(data.client_list)
+                    {
+                        client_list = data['client_list'];
+                    }
+                    else
+                    {
+                        client_list[data['client_id']] = data['client_name'];
+                    }
+                    flush_client_list();
+                    break;
+                case 'say': // 发言
+                    say(data['from_client_id'], data['from_client_name'], data['content'], data['time']);
+                    break;
+                case 'logout':  // 用户退出 更新用户列表
+                    //{"type":"logout","client_id":xxx,"time":"xxx"}
+                    say(data['from_client_id'], data['from_client_name'], data['from_client_name']+' 退出了', data['time']);
+                    delete client_list[data['from_client_id']];
+                    flush_client_list();
+            }
+        }
+
+        // 发言
+        function say(from_client_id, from_client_name, content, time){
+            $("#dialog").append('<div class="speech_item"><img src="http://lorempixel.com/38/38/?1" class="user_icon" /> '+from_client_name+' <br> '+time+'<div style="clear:both;"></div><p class="triangle-isosceles top">'+content+'</p> </div>');
+        }
+        // 刷新用户列表框
+        function flush_client_list(){
+            $("#userlist").empty();
+            $("#client_list").empty();
+            $("#userlist").append('<h4>在线用户</h4><ul>');
+            $("#client_list").append('<option value="all" id="cli_all" selected>所有人</option>');
+            for(var p in client_list){
+                $("#userlist").append('<li id="'+p+'">'+client_list[p]+'</li>');
+                $("#client_list").append('<option value="'+p+'">'+client_list[p]+'</option>');
+            }
+        }
+        // 提交对话
+        function onSubmit() {
+            var to_client_id = $("#client_list").val();
+            var to_client_name = $("#client_list option:selected").text();
+            ws.send('{"type":"say","to_client_id":"'+to_client_id+'","to_client_name":"'+to_client_name+'","content":"'+$("#textarea").val().replace(/"/g, '\\"').replace(/\n/g,'\\n').replace(/\r/g, '\\r')+'"}');
+            $("#textarea").val("");
+            $("#textarea").focus();
+        }
+    </script>
+</head>
+<body onload="connect();">
+<div class="container">
+    <div class="row clearfix">
+        <div class="col-md-1 column">
+        </div>
+        <div class="col-md-6 column">
+            <div class="thumbnail">
+                <div class="caption" id="dialog"></div>
+            </div>
+            <form onsubmit="onSubmit(); return false;">
+                <select style="margin-bottom:8px" id="client_list">
+                </select>
+                <textarea class="textarea thumbnail" id="textarea"></textarea>
+                <div class="say-btn">
+                    <input type="submit" class="btn btn-default" value="发表" />
+                </div>
+            </form>
+
+        </div>
+        <div class="col-md-3 column">
+            <div class="thumbnail">
+                <div class="caption" id="userlist"></div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
